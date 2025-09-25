@@ -1,0 +1,99 @@
+package edu.ccrm.io;
+
+import edu.ccrm.domain.*;
+import edu.ccrm.service.CourseService;
+import edu.ccrm.service.StudentService;
+import edu.ccrm.config.AppConfig;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+public class ImportExportService {
+    private final AppConfig config;
+    private final CourseService courseService;
+    private final StudentService studentService;
+    
+    public ImportExportService(CourseService courseService, StudentService studentService) {
+        this.config = AppConfig.getInstance();
+        this.courseService = courseService;
+        this.studentService = studentService;
+    }
+    
+    public void importStudentsFromCSV(Path filePath) throws IOException {
+        assert filePath != null : "File path cannot be null";
+        
+        try (Stream<String> lines = Files.lines(filePath)) {
+            lines.skip(1) // Skip header
+                 .forEach(line -> {
+                     String[] fields = line.split(",");
+                     if (fields.length >= 4) {
+                         Student student = new Student(
+                             fields[0].trim(), // id
+                             fields[1].trim(), // regNo
+                             fields[2].trim(), // fullName
+                             fields[3].trim()  // email
+                         );
+                         studentService.addStudent(student);
+                     }
+                 });
+        }
+    }
+    
+    public void importCoursesFromCSV(Path filePath) throws IOException {
+        assert filePath != null : "File path cannot be null";
+        
+        try (Stream<String> lines = Files.lines(filePath)) {
+            lines.skip(1)
+                 .forEach(line -> {
+                     String[] fields = line.split(",");
+                     if (fields.length >= 3) {
+                         Course course = new Course.Builder(
+                             fields[0].trim(), // code
+                             fields[1].trim()  // title
+                         )
+                         .credits(Integer.parseInt(fields[2].trim()))
+                         .instructor(fields.length > 3 ? fields[3].trim() : "TBA")
+                         .semester(fields.length > 4 ? Semester.valueOf(fields[4].trim()) : Semester.FALL)
+                         .department(fields.length > 5 ? fields[5].trim() : "General")
+                         .build();
+                         courseService.addCourse(course);
+                     }
+                 });
+        }
+    }
+    
+    public void exportStudentsToCSV(Path filePath) throws IOException {
+        List<String> lines = studentService.getAllStudents().stream()
+                .map(student -> String.format("%s,%s,%s,%s,%s",
+                    student.getId(),
+                    student.getRegNo(),
+                    student.getFullName(),
+                    student.getEmail(),
+                    student.isActive()))
+                .collect(Collectors.toList());
+        
+        lines.add(0, "ID,RegNo,FullName,Email,Active"); // Add header
+        Files.write(filePath, lines);
+    }
+    
+    public void exportCoursesToCSV(Path filePath) throws IOException {
+        List<String> lines = courseService.getAllCourses().stream()
+                .map(course -> String.format("%s,%s,%d,%s,%s,%s,%s",
+                    course.getCode(),
+                    course.getTitle(),
+                    course.getCredits(),
+                    course.getInstructor(),
+                    course.getSemester(),
+                    course.getDepartment(),
+                    course.isActive()))
+                .collect(Collectors.toList());
+        
+        lines.add(0, "Code,Title,Credits,Instructor,Semester,Department,Active");
+        Files.write(filePath, lines);
+    }
+}
